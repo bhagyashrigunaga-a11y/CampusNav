@@ -1,0 +1,20 @@
+{
+  "name": "campusnav-project",
+  "version": "1.0.0",
+  "description": "CampusNav: Cloud-Based Smart Indoor Campus Navigation and Facility Locator Using AWS (RV University)",
+  "scripts": {
+    "start": "node backend/src/server.js",
+    "seed": "node backend/src/models/seed.js",
+    "dev:backend": "node --watch backend/src/server.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "indoor-navigation",
+    "dijkstra-algorithm",
+    "aws-cloud",
+    "accessibility",
+    "facility-locator"
+  ],
+  "author": "Prerana Prakash Talawar, Bhagyshree Laxmikant Gunaga, Bhuvana M G (RV University)"
+}

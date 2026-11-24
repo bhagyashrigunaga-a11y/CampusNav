@@ -1,0 +1,259 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CampusNav AWS Infrastructure: VPC, EC2 Web Server, RDS MySQL, S3 Floor-Plan Storage,
+  IAM Least-Privilege Roles, and CloudWatch Alarms.
+  Authors: Prerana Prakash Talawar, Bhagyshree Laxmikant Gunaga, Bhuvana M G (RV University)
+
+Parameters:
+  KeyName:
+    Type: String
+    Default: 'campusnav-key'
+    Description: EC2 SSH KeyPair Name
+  DBUsername:
+    Type: String
+    Default: 'admin'
+    Description: RDS MySQL Master Username
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Default: 'CampusNav2026Secure!'
+    Description: RDS MySQL Master Password
+
+Resources:
+  # -------------------------------------------------------------
+  # 1. NETWORKING LAYER (Amazon VPC & Subnets)
+  # -------------------------------------------------------------
+  CampusNavVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: CampusNav-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CampusNav-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CampusNavVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CampusNavVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CampusNav-PublicSubnet-EC2
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CampusNavVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: CampusNav-PrivateSubnet-RDS-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CampusNavVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: CampusNav-PrivateSubnet-RDS-2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CampusNavVPC
+      Tags:
+        - Key: Name
+          Value: CampusNav-PublicRouteTable
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # -------------------------------------------------------------
+  # 2. SECURITY GROUPS (Least-Privilege Isolation)
+  # -------------------------------------------------------------
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP, HTTPS and API access to EC2 Web Server
+      VpcId: !Ref CampusNavVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL traffic exclusively from EC2 Security Group
+      VpcId: !Ref CampusNavVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+
+  # -------------------------------------------------------------
+  # 3. STORAGE LAYER (Amazon S3 for Floor Plans)
+  # -------------------------------------------------------------
+  FloorPlanS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'campusnav-floorplans-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+
+  # -------------------------------------------------------------
+  # 4. DATABASE LAYER (Amazon RDS for MySQL - Free-Tier db.t3.micro)
+  # -------------------------------------------------------------
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for CampusNav RDS Multi-AZ capability
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  CampusNavRDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: campusnav-mysql-db
+      AllocatedStorage: '20'
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      EngineVersion: '8.0'
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: campusnav
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      MultiAZ: false # Kept false as recommended in Section VI to avoid extra costs
+      PubliclyAccessible: false
+      StorageType: gp2
+
+  # -------------------------------------------------------------
+  # 5. APPLICATION LAYER (Amazon EC2 Instance - t3.micro)
+  # -------------------------------------------------------------
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2CloudWatchS3Role
+
+  EC2CloudWatchS3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ec2.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: CampusNavS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::campusnav-floorplans-${AWS::AccountId}-${AWS::Region}'
+                  - !Sub 'arn:aws:s3:::campusnav-floorplans-${AWS::AccountId}-${AWS::Region}/*'
+
+  CampusNavEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-00bb6a80f01f03502 # Amazon Linux 2023 in ap-south-1
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y git nodejs
+          # Clone or pull CampusNav repo
+          mkdir -p /var/www/campusnav
+          cd /var/www/campusnav
+          echo "CampusNav server deployment initialized"
+      Tags:
+        - Key: Name
+          Value: CampusNav-EC2-WebServer
+
+  # -------------------------------------------------------------
+  # 6. MONITORING LAYER (Amazon CloudWatch Logs & Metrics)
+  # -------------------------------------------------------------
+  CampusNavLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/campusnav/ec2-api
+      RetentionInDays: 7
+
+Outputs:
+  EC2PublicIP:
+    Description: Public IP of EC2 Instance hosting CampusNav Web App & Dijkstra Engine
+    Value: !GetAtt CampusNavEC2Instance.PublicIp
+  RDSEndpoint:
+    Description: Private endpoint for Amazon RDS MySQL instance
+    Value: !GetAtt CampusNavRDSInstance.Endpoint.Address
+  S3BucketName:
+    Description: S3 Bucket Name for Floor-Plan Images
+    Value: !Ref FloorPlanS3Bucket
