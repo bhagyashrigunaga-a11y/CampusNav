@@ -2,7 +2,7 @@
 
 **Authors:**
 - **Prerana Prakash Talawar** (USN: `1RUA24CSE0333`)
-- **Bhagyshree Laxmikant Gunaga** (USN: `1RUA24CSE0084`)
+- **Bhagyshri Laxmikant Gunaga** (USN: `1RUA24CSE0084`)
 - **Bhuvana M G** (USN: `1RUA24CSE0092`)
 
 *School of Computer Science and Engineering (SoCSE), RV University, Bengaluru, India*
