@@ -5,7 +5,26 @@ const multer = require('multer');
 // Configure file upload with memory storage for S3
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  fileFilter: (req, file, callback) => {
+    const mimeTypesByExtension = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      svg: 'image/svg+xml',
+      webp: 'image/webp'
+    };
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    const expectedMimeType = mimeTypesByExtension[extension];
+    const hasGenericMimeType = !file.mimetype || file.mimetype === 'application/octet-stream';
+    if (!expectedMimeType || (!hasGenericMimeType && file.mimetype !== expectedMimeType)) {
+      const error = new Error('Only PNG, JPG, JPEG, SVG, and WebP floor plan images are allowed.');
+      error.status = 400;
+      return callback(error);
+    }
+    file.mimetype = expectedMimeType;
+    return callback(null, true);
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 } // 10MB
 });
 
 const mapController = require('../controllers/mapController');

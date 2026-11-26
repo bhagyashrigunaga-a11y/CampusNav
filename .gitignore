@@ -10,3 +10,6 @@ coverage/
 *.pem
 *.key
 .DS_Store
+# Local database files and backups
+backend/data/*.json
+backend/data/*.backup*

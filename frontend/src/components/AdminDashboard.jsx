@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building, 
   MapPin, 
@@ -18,6 +18,7 @@ import {
 import { 
   adminCreateNode, 
   adminUpdateNode,
+  adminUploadFloorPlan,
   adminDeleteNode, 
   adminCreateEdge, 
   adminUpdateEdgeStatus,
@@ -28,6 +29,7 @@ import {
   adminCreateFaculty,
   adminUpdateFaculty,
   adminDeleteFaculty,
+  validateFloorPlanFile,
   fetchFaculty
 } from '../services/api';
 import { defaultBlocks } from '../services/defaultData';
@@ -42,6 +44,10 @@ export default function AdminDashboard({
   const [activeTab, setActiveTab] = useState('nodes'); // 'nodes' | 'edges' | 'upload' | 'analytics'
   const [stats, setStats] = useState(null);
   const [message, setMessage] = useState(null);
+  const [selectedFloorPlan, setSelectedFloorPlan] = useState(null);
+  const [uploadingFloorPlan, setUploadingFloorPlan] = useState(false);
+  const [uploadFloorId, setUploadFloorId] = useState('');
+  const floorPlanInputRef = useRef(null);
   const [editingNodeId, setEditingNodeId] = useState(null);
   const [facultyRecords, setFacultyRecords] = useState([]);
   const [editingFacultyId, setEditingFacultyId] = useState(null);
@@ -273,7 +279,56 @@ export default function AdminDashboard({
       setMessage({ type: 'error', text: err.message });
     }
   };
+  const handleFloorPlanSelection = (event) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedFloorPlan(null);
+    if (!file) return;
 
+    try {
+      validateFloorPlanFile(file);
+      setSelectedFloorPlan(file);
+      setMessage(null);
+    } catch (error) {
+      event.target.value = '';
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleFloorPlanUpload = async () => {
+    const floorId = uploadFloorId || currentFloorId || floors[0]?.id;
+
+    if (!selectedFloorPlan) {
+      setMessage({ type: 'error', text: 'Please select a floor plan file.' });
+      return;
+    }
+
+    if (!floorId) {
+      setMessage({ type: 'error', text: 'Please select a floor.' });
+      return;
+    }
+
+    setUploadingFloorPlan(true);
+
+    try {
+      const result = await adminUploadFloorPlan(selectedFloorPlan, floorId);
+      setMessage({
+        type: 'success',
+        text: result.message || 'Floor plan uploaded successfully!'
+      });
+      setSelectedFloorPlan(null);
+      setUploadFloorId('');
+      if (floorPlanInputRef.current) floorPlanInputRef.current.value = '';
+
+      if (onRefreshData) await onRefreshData();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error.message || 'Floor plan upload failed.'
+      });
+    } finally {
+      setUploadingFloorPlan(false);
+    }
+  };
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-lg p-6 space-y-6">
       
@@ -350,7 +405,17 @@ export default function AdminDashboard({
           <Users className="w-4 h-4" />
           <span>Faculty ({facultyRecords.length})</span>
         </button>
-
+        <button
+          onClick={() => setActiveTab('upload')}
+          className={`pb-2.5 px-3 flex items-center space-x-1.5 border-b-2 transition-all ${
+            activeTab === 'upload'
+              ? 'border-emerald-600 text-emerald-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Upload className="w-4 h-4" />
+          <span>Upload Floor Plan</span>
+        </button>
         <button
           onClick={() => setActiveTab('analytics')}
           className={`pb-2.5 px-3 flex items-center space-x-1.5 border-b-2 transition-all ${
@@ -796,7 +861,66 @@ export default function AdminDashboard({
           </div>
         </div>
       )}
+      {/* TAB: FLOOR PLAN UPLOAD */}
+      {activeTab === 'upload' && (
+        <div className="space-y-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-800">
+              Upload Campus Floor Plan
+            </h3>
 
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-2">
+                Select Floor
+              </label>
+              <select
+                value={uploadFloorId || currentFloorId || floors[0]?.id || ''}
+                onChange={(event) => setUploadFloorId(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs"
+                required
+              >
+                <option value="">Choose a floor</option>
+                {floors.map((floor) => (
+                  <option key={floor.id} value={floor.id}>
+                    {floor.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-2">
+                Select Floor Plan Image
+              </label>
+              <input
+                ref={floorPlanInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp,.png,.jpg,.jpeg,.svg,.webp"
+                onChange={handleFloorPlanSelection}
+                className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs"
+              />
+              <p className="mt-1 text-[10px] text-slate-500">
+                Maximum file size: 10 MB.
+              </p>
+            </div>
+
+            {selectedFloorPlan && (
+              <p className="text-xs text-slate-600">
+                Selected: {selectedFloorPlan.name}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleFloorPlanUpload}
+              disabled={uploadingFloorPlan || !selectedFloorPlan}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {uploadingFloorPlan ? 'Uploading...' : 'Upload Floor Plan'}
+            </button>
+          </div>
+        </div>
+      )}
       {/* TAB 3: CLOUDWATCH & ANALYTICS */}
       {activeTab === 'analytics' && (
         <div className="space-y-4">

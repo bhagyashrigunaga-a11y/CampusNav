@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS floors (
     block_id VARCHAR(50) NOT NULL,
     floor_number INT NOT NULL,
     name VARCHAR(100) NOT NULL,
-    map_image_url VARCHAR(255) DEFAULT '', -- Amazon S3 Object URL
+    map_image_url VARCHAR(255) DEFAULT '', -- Local URL; S3 URLs are generated from map_image_key on fetch
+    map_image_key VARCHAR(512) DEFAULT NULL,
     width INT DEFAULT 1000,
     height INT DEFAULT 650,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

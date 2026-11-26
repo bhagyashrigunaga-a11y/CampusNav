@@ -246,7 +246,7 @@ Open **Admin Login** in the top navigation and sign in with the server-configure
 - Generate printable PNG QR codes for existing location IDs.
 - Maintain verified faculty/staff records with cabin, room number, floor, and optional linked campus office; admins can add, edit, and delete records.
 
-For an existing MySQL database, apply `backend/migrations/001_dynamic_route_status.sql` once before using the new route/status fields, then apply `backend/migrations/002_faculty_location_details.sql` once to add faculty cabin, room number, and floor fields. Fresh databases receive these fields from `backend/schema.sql`. Back up the database before applying migrations.
+For an existing MySQL database, apply `backend/migrations/001_dynamic_route_status.sql` once before using the new route/status fields, then `backend/migrations/002_faculty_location_details.sql` for faculty cabin, room number, and floor fields, and `backend/migrations/003_floor_plan_object_key.sql` before uploading floor plans. The last migration adds persistent S3 object-key storage so expiring signed URLs are generated when floors are fetched rather than saved in MySQL. Fresh databases receive these fields from `backend/schema.sql`. Back up the database before applying migrations.
 
 ### 6. Navigation additions and requirements
 - Dijkstra remains the default. A* can be selected in the route panel; it uses an admissible coordinate heuristic and falls back to a zero heuristic where map coordinates cannot safely guide the search.
@@ -257,7 +257,7 @@ For an existing MySQL database, apply `backend/migrations/001_dynamic_route_stat
 - QR scanning uses the device camera and the browser `BarcodeDetector` API. It requires camera permission and a secure context (localhost or HTTPS). Admin-generated codes contain the location ID; print and place the labels at the corresponding real locations. Manual starting-location selection remains available.
 - The map's **Save offline** control caches the campus overview image and current blocks/floors/nodes/edges. The production app shell and static assets are cached by a service worker; offline route calculation uses cached graph data when available, otherwise the bundled fallback data.
 - The project currently includes the RVU campus overview image, but not verified floor-plan images for each building/floor. Do not treat generated sample graph coordinates or sample timetable entries as official campus data. Supply approved floor plans and records before using them for real-world directions or live occupancy.
-- The current AWS service adapter has local/emulated behavior; setting AWS keys alone does not make S3 uploads or CloudWatch metrics live. Validate and implement AWS SDK calls and IAM permissions before relying on cloud services.
+- Floor-plan uploads use the AWS SDK when `CAMPUSNAV_S3_BUCKET` is configured and fall back to local `/uploads` storage if S3 is unavailable. The server's AWS credential provider chain (preferably an instance role) must have the required S3 permissions. CloudWatch metric publishing errors are logged without converting a successful image upload into a failure.
 
 ### 7. Verification
 From the project directory:
@@ -267,6 +267,23 @@ node backend/test_dijkstra.js
 node backend/verify_endpoints.js
 npm run build:frontend
 ```
+
+### 8. Deployment status and AWS verification
+
+The following AWS resources were verified read-only in region `ap-south-1`:
+
+- S3 bucket `campusnav-floorplans-rvu-2026-716716271138-ap-south-1-an` exists and is in `ap-south-1`.
+- Public S3 access is blocked.
+- Existing floor-plan objects, including `rvu.jpg` and `rvu_map.jpeg`, are readable through authenticated AWS CLI/S3 access.
+- CloudWatch namespace `CampusNav` contains `FloorPlanUploadSuccess`.
+- EC2 instance `i-0347f760a8aa9d266` was reported running as `t3.micro`.
+- RDS MySQL instance `campusnav-mysql` was reported available as MySQL 8.4.11, `db.t4g.micro`, private/non-public, with 20 GB storage.
+
+The local project environment is configured with `DB_TYPE=local`; therefore it is not currently connected to RDS. RDS configuration variables remain optional and must be supplied only through secure EC2/production environment configuration. Do not store RDS or administrator credentials in source code or the frontend.
+
+The EC2 public health endpoint could not be reached during verification. Before production use, verify Node.js startup, application directory contents, security-group port exposure, reverse proxy configuration, and the `/api/health` endpoint on the deployed instance.
+
+The existing CloudFormation template was validated. Because templates can create billable resources, do not deploy it until the RDS password and SSH source CIDR are supplied and a deployment approval is recorded.
 
 ---
 

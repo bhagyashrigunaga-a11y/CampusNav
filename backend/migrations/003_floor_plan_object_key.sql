@@ -1,0 +1,2 @@
+ALTER TABLE floors
+    ADD COLUMN map_image_key VARCHAR(512) DEFAULT NULL;

@@ -184,6 +184,19 @@ function findShortestPath(nodes, edges, sourceId, destinationId, options = {}) {
     };
   }
 
+  const unavailableSource = nodeMap.get(sourceId);
+  const unavailableDestination = nodeMap.get(destinationId);
+  if (unavailableSource && (unavailableSource.is_available === false ||
+      unavailableSource.is_available === 0 || unavailableSource.is_available === '0' ||
+      unavailableSource.availability_status === 'unavailable')) {
+    return { success: false, error: 'The starting location is currently unavailable.' };
+  }
+  if (unavailableDestination && (unavailableDestination.is_available === false ||
+      unavailableDestination.is_available === 0 || unavailableDestination.is_available === '0' ||
+      unavailableDestination.availability_status === 'unavailable')) {
+    return { success: false, error: 'This location is currently unavailable.' };
+  }
+
   const distances = new Map();
   const rawDistances = new Map();
   const previous = new Map(); // stores { node: prevNodeId, edge: edgeObj }

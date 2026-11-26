@@ -18,7 +18,8 @@ import {
   calculateRoute, 
   findNearbyFacilities,
   adminLogin,
-  adminLogout
+  adminLogout,
+  adminCheckSession
 } from './services/api';
 
 import { 
@@ -63,6 +64,11 @@ export default function App() {
 
   useEffect(() => {
     loadCampusData();
+    if (localStorage.getItem('campusnav-admin-token')) {
+      adminCheckSession()
+        .then(() => setIsAdminAuthenticated(true))
+        .catch(() => setIsAdminAuthenticated(false));
+    }
   }, []);
 
   const loadCampusData = async () => {

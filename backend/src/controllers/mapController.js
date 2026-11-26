@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const awsService = require('../services/awsService');
 const QRCode = require('qrcode');
 
 exports.getLocationQr = async (req, res) => {
@@ -39,9 +40,41 @@ exports.getFloors = async (req, res) => {
   try {
     const { blockId } = req.query;
     const floors = await db.getFloors(blockId);
-    res.json(floors);
+
+    const floorsWithSignedUrls = await Promise.all(
+      floors.map(async (floor) => {
+        let key = floor.map_image_key;
+
+        // Support existing S3 URLs saved before this update
+        if (!key && floor.map_image_url) {
+          try {
+            const parsedUrl = new URL(floor.map_image_url);
+            const bucket = process.env.CAMPUSNAV_S3_BUCKET;
+
+            if (bucket && parsedUrl.hostname.startsWith(`${bucket}.s3.`)) {
+              key = decodeURIComponent(parsedUrl.pathname.slice(1));
+            }
+          } catch (error) {
+            console.error('Invalid floor plan URL:', error.message);
+          }
+        }
+
+        if (key) {
+          const signedUrl = await awsService.getFloorPlanUrl(key);
+          return {
+            ...floor,
+            map_image_url: signedUrl
+          };
+        }
+
+        return floor;
+      })
+    );
+
+    res.json(floorsWithSignedUrls);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch floors.' });
+    console.error('Fetch floors error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch floors.' });
   }
 };
 

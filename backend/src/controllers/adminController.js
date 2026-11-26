@@ -203,20 +203,33 @@ exports.uploadFloorPlan = async (req, res) => {
     }
 
     const { floorId } = req.body;
+    if (!floorId) {
+      return res.status(400).json({ error: 'A floor ID is required.' });
+    }
+    const floor = await db.getFloorById(floorId);
+    if (!floor) {
+      return res.status(400).json({ error: 'The selected floor does not exist.' });
+    }
     const uploadResult = await awsService.uploadFloorPlan(req.file.buffer, req.file.originalname, req.file.mimetype);
-
-    if (floorId) {
-      await db.updateFloor(floorId, { map_image_url: uploadResult.url });
+    const floorUpdates = uploadResult.storage === 's3'
+      ? { map_image_url: '', map_image_key: uploadResult.key }
+      : { map_image_url: uploadResult.url, map_image_key: null };
+    const updatedFloor = await db.updateFloor(floorId, floorUpdates);
+    if (!updatedFloor) {
+      throw new Error('The floor plan was stored, but the selected floor could not be updated.');
     }
 
     res.json({
       success: true,
       file: uploadResult,
-      message: 'Floor plan successfully uploaded.'
+      floor: { ...updatedFloor, map_image_url: uploadResult.url },
+      message: uploadResult.storage === 's3'
+        ? 'Floor plan successfully uploaded to AWS S3.'
+        : 'Floor plan stored locally because S3 is unavailable or not configured.'
     });
   } catch (error) {
     console.error('Floor plan upload error:', error);
-    res.status(500).json({ error: 'Failed to upload floor plan.' });
+    res.status(500).json({ error: error.message || 'Failed to upload floor plan.' });
   }
 };
 

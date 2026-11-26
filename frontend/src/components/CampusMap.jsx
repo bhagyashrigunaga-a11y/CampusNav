@@ -52,6 +52,7 @@ export default function CampusMap({
   const [selectedNode, setSelectedNode] = useState(null);
   const [isSavingOffline, setIsSavingOffline] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState('');
+  const [mapImageStates, setMapImageStates] = useState({});
 
   // Active view: 'campus' (Master RVU Map) or block ID like 'block-c', 'block-a', etc.
   const isViewingCampusMaster = currentFloorId === 'floor-campus';
@@ -59,12 +60,22 @@ export default function CampusMap({
   // Current active block for indoor view
   const currentFloorObj = floors.find(f => f.id === currentFloorId);
   const activeBlockId = currentFloorObj?.block_id?.startsWith('block-') ? currentFloorObj.block_id : 'block-c';
+  const floorPlanUrl = currentFloorObj?.map_image_url;
+  const mapImageStatus = floorPlanUrl
+    ? mapImageStates[floorPlanUrl] || 'loading'
+    : 'idle';
+  const setCurrentMapImageStatus = (status) => {
+    if (!floorPlanUrl) return;
+    setMapImageStates(current => ({ ...current, [floorPlanUrl]: status }));
+  };
 
   // Simulation states
   const [isSimulating, setIsSimulating] = useState(false);
   const [simStep, setSimStep] = useState(0);
 
   const containerRef = useRef(null);
+  const masterScaleX = 1024 / 1000;
+  const masterScaleY = 682 / 950;
 
   // Simulation loop
   useEffect(() => {
@@ -351,7 +362,7 @@ export default function CampusMap({
         onMouseLeave={handleMouseUp}
       >
         <svg
-          viewBox={isViewingCampusMaster ? "0 0 1000 950" : "0 0 1000 650"}
+          viewBox={isViewingCampusMaster ? "0 0 1024 682" : "0 0 1000 650"}
           className="w-full h-full max-h-[750px] transition-transform duration-75 ease-out"
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -377,31 +388,35 @@ export default function CampusMap({
           </defs>
 
           {/* Background */}
-          <rect width="1000" height={isViewingCampusMaster ? "950" : "650"} fill="#0f172a" />
-          <rect width="1000" height={isViewingCampusMaster ? "950" : "650"} fill="url(#grid)" />
+          <rect width="1024" height={isViewingCampusMaster ? "682" : "650"} fill="#0f172a" />
+          <rect width="1024" height={isViewingCampusMaster ? "682" : "650"} fill="url(#grid)" />
 
           {/* VIEW 1: RV UNIVERSITY CAMPUS MASTER OVERVIEW MAP */}
           {isViewingCampusMaster && (
             <g id="campus-master-view">
               {/* Official Campus Map Background Image */}
-              <image 
-                href="/assets/maps/rvu_campus_map.jpg" 
+              <image
+                key={`${currentFloorId}-${currentFloorObj?.map_image_url || 'default'}`}
+                href={currentFloorObj?.map_image_url || '/assets/maps/rvu_campus_map.jpg'}
                 x="0" 
                 y="0" 
-                width="1000" 
-                height="950" 
-                preserveAspectRatio="xMidYMid slice" 
-                opacity="0.88" 
+                width="1024"
+                height="682"
+                preserveAspectRatio="none"
+                opacity="0.88"
+                onLoad={() => setCurrentMapImageStatus('loaded')}
+                onError={() => setCurrentMapImageStatus('error')}
               />
 
               {/* Campus Master Title Banner */}
               <g transform="translate(40, 40)">
-                <rect width="320" height="60" rx="12" fill="#0f172a" fillOpacity="0.85" stroke="#334155" strokeWidth="1.5" />
+                <rect width="320" height="60" rx="12" fill="#333e57" fillOpacity="0.85" stroke="#334155" strokeWidth="1.5" />
                 <text x="20" y="28" fill="#38bdf8" fontSize="14" fontWeight="800">RV UNIVERSITY BENGALURU</text>
                 <text x="20" y="46" fill="#94a3b8" fontSize="11" fontWeight="500">Interactive Outdoor Walkway & Campus Map</text>
               </g>
 
               {/* Building Quick Click Overlays */}
+              <g transform={`scale(${masterScaleX} ${masterScaleY})`}>
               {ACADEMIC_BLOCKS.map(blk => {
                 const node = nodes.find(n => n.id === `out-node-${blk.id}`);
                 if (!node) return null;
@@ -432,6 +447,7 @@ export default function CampusMap({
                   </g>
                 );
               })}
+              </g>
             </g>
           )}
 
@@ -482,6 +498,21 @@ export default function CampusMap({
                   <text x="480" y="450" fill="#fbbf24" fontSize="11" fontWeight="700" textAnchor="middle">ELEVATOR</text>
                   <text x="480" y="468" fill="#fde68a" fontSize="9" textAnchor="middle">♿ Step-Free</text>
                 </g>
+              )}
+
+              {!isViewingCampusMaster && currentFloorObj?.map_image_url && (
+                <image
+                  key={`${currentFloorId}-${currentFloorObj.map_image_url}`}
+                  href={currentFloorObj.map_image_url}
+                  x="0"
+                  y="0"
+                  width="1000"
+                  height="650"
+                  preserveAspectRatio="none"
+                  opacity="0.9"
+                  onLoad={() => setCurrentMapImageStatus('loaded')}
+                  onError={() => setCurrentMapImageStatus('error')}
+                />
               )}
 
               {/* 1st Floor Rooms */}
@@ -584,7 +615,7 @@ export default function CampusMap({
 
           {/* GRAPH EDGES OVERLAY */}
           {showGraphOverlay && (
-            <g id="graph-edges" opacity="0.6">
+            <g id="graph-edges" opacity="0.6" transform={isViewingCampusMaster ? `scale(${masterScaleX} ${masterScaleY})` : undefined}>
               {currentFloorEdges.map(edge => {
                 const u = nodes.find(n => n.id === edge.source_node_id);
                 const v = nodes.find(n => n.id === edge.target_node_id);
@@ -614,7 +645,7 @@ export default function CampusMap({
 
           {/* ACTIVE DIJKSTRA ROUTE PATH (GLOWING ANIMATED LINE) */}
           {currentFloorPathSegments.length > 0 && (
-            <g id="active-route" filter="url(#glow)">
+            <g id="active-route" filter="url(#glow)" transform={isViewingCampusMaster ? `scale(${masterScaleX} ${masterScaleY})` : undefined}>
               {currentFloorPathSegments.map((seg, idx) => (
                 <g key={`path-${idx}`}>
                   {seg.index === currentInstructionIndex - 1 && (
@@ -665,7 +696,9 @@ export default function CampusMap({
 
           {/* SIMULATED WALKING AVATAR */}
           {isSimulating && activeRoute?.pathNodes?.[simStep] && activeRoute.pathNodes[simStep].floor_id === currentFloorId && (
-            <g transform={`translate(${activeRoute.pathNodes[simStep].x}, ${activeRoute.pathNodes[simStep].y})`}>
+            <g transform={isViewingCampusMaster
+              ? `translate(${activeRoute.pathNodes[simStep].x * masterScaleX}, ${activeRoute.pathNodes[simStep].y * masterScaleY})`
+              : `translate(${activeRoute.pathNodes[simStep].x}, ${activeRoute.pathNodes[simStep].y})`}>
               <circle r="26" fill="#38bdf8" opacity="0.3" className="animate-ping" />
               <circle r="16" fill="#0284c7" stroke="#ffffff" strokeWidth="3" />
               <circle r="7" fill="#ffffff" />
@@ -673,7 +706,7 @@ export default function CampusMap({
           )}
 
           {/* VERTICES / NODES ON THIS FLOOR */}
-          <g id="map-nodes">
+          <g id="map-nodes" transform={isViewingCampusMaster ? `scale(${masterScaleX} ${masterScaleY})` : undefined}>
             {currentFloorNodes.map(node => {
               const isStart = node.id === startNodeId;
               const isDest = node.id === destNodeId;
@@ -727,23 +760,73 @@ export default function CampusMap({
                     </g>
                   )}
 
-                  <text
-                    x={node.x}
-                    y={node.y + 19}
-                    fill="#f1f5f9"
-                    fontSize="9.5"
-                    fontWeight="600"
-                    textAnchor="middle"
-                    className="drop-shadow-md select-none"
-                  >
-                    {node.name.length > 22 ? node.name.slice(0, 20) + '…' : node.name}
-                  </text>
+                 {(() => {
+  const labelPositions = {
+    'out-node-gate': { dx: 0, dy: 44, anchor: 'middle' },
+    'out-node-walkway-south': { dx: 0, dy: 38, anchor: 'middle' },
+    'out-node-grand-stairs': { dx: 0, dy: -24, anchor: 'middle' },
+    'out-node-grand-ramp': { dx: 0, dy: 32, anchor: 'middle' },
+    'out-node-small-mingoose': { dx: -18, dy: 32, anchor: 'end' },
+    'out-node-admin': { dx: 18, dy: 28, anchor: 'start' },
+    'out-node-mm-food-south': { dx: 18, dy: 32, anchor: 'start' },
+    'out-node-ganesha': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-a': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-b': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-c': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-d': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-e': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-block-f': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-incub': { dx: 0, dy: -20, anchor: 'middle' },
+    'out-node-mm-food-east': { dx: 20, dy: 28, anchor: 'start' },
+    'out-node-big-mingoose': { dx: -18, dy: 30, anchor: 'end' },
+    'out-node-library': { dx: 0, dy: -24, anchor: 'middle' }
+  };
+
+  const position = labelPositions[node.id] || {
+    dx: 0,
+    dy: 19,
+    anchor: 'middle'
+  };
+
+  const label = node.name.length > 22
+    ? node.name.slice(0, 20) + '…'
+    : node.name;
+
+  return (
+    <text
+      x={node.x + position.dx}
+      y={node.y + position.dy}
+      fill="#ffffff"
+      fontSize="9.5"
+      fontWeight="700"
+      textAnchor={position.anchor}
+      stroke="#0f172a"
+      strokeWidth="3"
+      paintOrder="stroke"
+      className="select-none"
+    >
+      {label}
+    </text>
+  );
+})()}
+
                 </g>
               );
             })}
           </g>
 
         </svg>
+
+        {floorPlanUrl && mapImageStatus === 'loading' && (
+          <div role="status" className="absolute bottom-4 right-4 z-20 rounded-lg border border-slate-600 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-lg">
+            Loading floor plan...
+          </div>
+        )}
+        {floorPlanUrl && mapImageStatus === 'error' && (
+          <div role="alert" className="absolute bottom-4 right-4 z-20 max-w-xs rounded-lg border border-rose-500/60 bg-slate-900/95 px-3 py-2 text-xs text-rose-200 shadow-lg">
+            Floor plan image could not be loaded. Map markers and routes remain available.
+          </div>
+        )}
 
         {/* Selected Node Card Overlay */}
         {selectedNode && (

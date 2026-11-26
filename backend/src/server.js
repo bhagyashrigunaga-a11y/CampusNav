@@ -71,6 +71,15 @@ if (require('fs').existsSync(frontendDist)) {
 // Fallback error handler
 app.use((err, req, res, next) => {
   console.error('[Error]', err.stack);
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'File size must be 10 MB or less.' });
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ error: 'Upload exactly one floor plan image.' });
+  }
+  if (err.status === 400) {
+    return res.status(400).json({ error: err.message });
+  }
   res.status(500).json({ error: err.message || 'Something went wrong on the server.' });
 });
 
